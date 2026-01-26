@@ -129,7 +129,7 @@ if generate_button:
                     else:
                         framework_filename = "货架框架图.png"
                     framework_path = os.path.join(temp_dir, framework_filename)
-                    generator.generate_shelf_framework(shelf_info, template_name, framework_path)
+                    generator.generate_shelf_framework(shelf_info, framework_path)
                     generated_files.append((framework_path, framework_filename))
                     
                     # 生成五个维度的商品布局图
@@ -141,43 +141,22 @@ if generate_button:
                         ("品牌名称", "品牌")
                     ]
                     
-                    generated_excel_files = []
                     for field_name, display_name in dimensions:
                         if template_name:
                             output_filename = f"{template_name}-{display_name}布局图.png"
-                            excel_filename = f"{template_name}-{display_name}布局数据.xlsx"
                         else:
                             output_filename = f"{display_name}布局图.png"
-                            excel_filename = f"{display_name}布局数据.xlsx"
                         output_path = os.path.join(temp_dir, output_filename)
-                        excel_path = os.path.join(temp_dir, excel_filename)
-                        
-                        # 生成布局图
                         generator.generate_product_layout(
                             shelf_info, shelf_col, layer_col, position_col,
                             field_name, display_name, template_name, output_path
                         )
                         generated_files.append((output_path, output_filename))
-                        
-                        # 导出Excel
-                        try:
-                            generator.export_to_excel(
-                                shelf_info, shelf_col, layer_col, position_col,
-                                field_name, display_name, template_name, excel_path
-                            )
-                            generated_excel_files.append((excel_path, excel_filename))
-                        except Exception as e:
-                            print(f"导出Excel时出错: {str(e)}")
                     
-                    # 创建ZIP文件（包含图片和Excel）
+                    # 创建ZIP文件
                     zip_buffer = BytesIO()
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                        # 添加图片文件
                         for file_path, filename in generated_files:
-                            if os.path.exists(file_path):
-                                zip_file.write(file_path, filename)
-                        # 添加Excel文件
-                        for file_path, filename in generated_excel_files:
                             if os.path.exists(file_path):
                                 zip_file.write(file_path, filename)
                     
@@ -194,85 +173,34 @@ if generate_button:
                     if template_name:
                         st.info(f"🏷️ 货架模板名称: {template_name}")
                     
-                    # 在页面上展示所有布局图
+                    # 下载按钮
                     st.markdown("---")
-                    st.header("🖼️ 布局图预览")
+                    st.header("📥 下载布局图")
                     
-                    # 使用标签页展示不同类型的图
-                    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-                        "📐 货架框架图",
-                        "📊 项目中类",
-                        "📊 项目小类",
-                        "📊 项目细类",
-                        "📊 销售类别",
-                        "📊 品牌"
-                    ])
-                    
-                    # 定义每个标签页对应的文件索引（货架框架图是第0个，然后是5个维度图）
-                    tab_configs = [
-                        (0, tab1, "货架框架图"),  # 货架框架图
-                        (1, tab2, "项目中类"),    # 项目中类
-                        (2, tab3, "项目小类"),    # 项目小类
-                        (3, tab4, "项目细类"),    # 项目细类
-                        (4, tab5, "销售类别"),    # 销售类别
-                        (5, tab6, "品牌"),        # 品牌
-                    ]
-                    
-                    # 显示每个标签页的图片
-                    for idx, (file_idx, tab, tab_name) in enumerate(tab_configs):
-                        if file_idx < len(generated_files):
-                            file_path, filename = generated_files[file_idx]
-                            if os.path.exists(file_path):
-                                with tab:
-                                    st.subheader(f"📊 {filename.replace('.png', '')}")
-                                    with open(file_path, "rb") as f:
-                                        image_data = f.read()
-                                    st.image(image_data, use_container_width=True)
-                                    
-                                    # 在每个图片下方添加下载按钮
-                                    col1, col2, col3 = st.columns([1, 1, 1])
-                                    with col2:
-                                        st.download_button(
-                                            label=f"📥 下载 {filename}",
-                                            data=image_data,
-                                            file_name=filename,
-                                            mime="image/png",
-                                            key=f"download_{idx}_{filename}",
-                                            use_container_width=True
-                                        )
-                    
-                    # Excel文件下载区域
-                    if generated_excel_files:
-                        st.markdown("---")
-                        st.header("📊 Excel数据下载")
-                        st.markdown("### 单独下载Excel文件")
-                        excel_cols = st.columns(3)
-                        for idx, (file_path, filename) in enumerate(generated_excel_files):
-                            if os.path.exists(file_path):
-                                with open(file_path, "rb") as f:
-                                    excel_data = f.read()
-                                with excel_cols[idx % 3]:
-                                    st.download_button(
-                                        label=f"📄 {filename}",
-                                        data=excel_data,
-                                        file_name=filename,
-                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                        use_container_width=True,
-                                        key=f"excel_{idx}"
-                                    )
-                    
-                    # 下载按钮区域
-                    st.markdown("---")
-                    st.header("📥 批量下载")
-                    
-                    # 下载ZIP文件（包含图片和Excel）
+                    # 下载ZIP文件
                     st.download_button(
-                        label="📦 下载所有文件（图片+Excel，ZIP压缩包）",
+                        label="📦 下载所有布局图（ZIP压缩包）",
                         data=zip_buffer,
-                        file_name=f"{template_name if template_name else '布局图'}-所有文件.zip",
+                        file_name=f"{template_name if template_name else '布局图'}-所有图纸.zip",
                         mime="application/zip",
                         use_container_width=True
                     )
+                    
+                    # 单独下载每个文件
+                    st.markdown("### 单独下载")
+                    cols = st.columns(3)
+                    for idx, (file_path, filename) in enumerate(generated_files):
+                        if os.path.exists(file_path):
+                            with open(file_path, "rb") as f:
+                                file_data = f.read()
+                            with cols[idx % 3]:
+                                st.download_button(
+                                    label=f"📄 {filename}",
+                                    data=file_data,
+                                    file_name=filename,
+                                    mime="image/png",
+                                    use_container_width=True
+                                )
                     
             except Exception as e:
                 st.error(f"❌ 生成布局图时出错: {str(e)}")
