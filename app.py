@@ -23,9 +23,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'STHeiti']
-plt.rcParams['axes.unicode_minus'] = False
+# ========== 优化：全局Matplotlib中文字体配置（跨系统兼容+高优先级） ==========
+plt.rcParams.update({
+    'font.sans-serif': ['SimHei', 'Arial Unicode MS', 'WenQuanYi Zen Hei', 'DejaVu Sans'],
+    'axes.unicode_minus': False,  # 解决负号显示为方框问题
+    'font.family': 'sans-serif',
+    'font.family': 'sans-serif'
+})
+# 额外添加：确保新创建的Figure都继承字体配置
+plt.rcParams['figure.facecolor'] = 'white'  # 同时解决生成图片背景透明/发黑问题
 
 # 标题
 st.title("📊 布局图生成器")
@@ -104,6 +110,11 @@ if generate_button:
                     
                     with open(layout_path, "wb") as f:
                         f.write(layout_file.getbuffer())
+                    
+                    # ========== 关键修改：创建生成器前，再次强制配置字体 ==========
+                    # 确保外部LayoutGenerator类中的Matplotlib绘图继承字体配置
+                    plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'WenQuanYi Zen Hei']
+                    plt.rcParams['axes.unicode_minus'] = False
                     
                     # 创建生成器实例
                     generator = LayoutGenerator(temp_dir)
