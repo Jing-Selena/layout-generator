@@ -14,35 +14,9 @@ import glob
 from typing import Dict, List, Tuple
 import numpy as np
 
-# 设置中文字体 - 尝试多种字体以确保显示正常
-import platform
-system = platform.system()
-if system == 'Darwin':  # macOS
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC', 'STHeiti', 'SimHei']
-elif system == 'Windows':
-    plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun']
-else:  # Linux
-    plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'DejaVu Sans']
+# 设置中文字体
+plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'STHeiti']
 plt.rcParams['axes.unicode_minus'] = False
-
-# 尝试设置字体属性，确保中文显示
-try:
-    # 查找可用的中文字体
-    font_list = font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
-    chinese_fonts = []
-    for font_path in font_list:
-        try:
-            font_prop = font_manager.FontProperties(fname=font_path)
-            font_name = font_prop.get_name()
-            # 检查是否是中文字体
-            if any(keyword in font_name for keyword in ['SimHei', 'Microsoft', 'PingFang', 'STHeiti', 'WenQuanYi', 'Arial Unicode']):
-                chinese_fonts.append(font_name)
-        except:
-            continue
-    if chinese_fonts:
-        plt.rcParams['font.sans-serif'] = chinese_fonts + plt.rcParams['font.sans-serif']
-except:
-    pass
 
 
 class LayoutGenerator:
@@ -283,128 +257,65 @@ class LayoutGenerator:
         
         return shelf_info, shelf_col, layer_col, position_col
     
-    def generate_shelf_framework(self, shelf_info: Dict, template_name: str = "", output_path: str = "货架框架图.png"):
+    def generate_shelf_framework(self, shelf_info: Dict, output_path: str = "货架框架图.png"):
         """
-        生成货架框架图（与其他维度图样式一致）
+        生成货架框架图
         
         Args:
             shelf_info: 货架信息字典
-            template_name: 货架模板名称
             output_path: 输出文件路径
         """
         num_shelves = len(shelf_info)
         if num_shelves == 0:
             raise ValueError("未找到任何货架信息，请检查数据")
         
-        # 计算每个货架的最大层数
-        max_layers_all = max(max(layers.keys()) if layers else 1 
-                            for layers in shelf_info.values())
-        
-        # 创建单个图形，所有货架并排显示（与其他维度图一致）
-        fig_width = num_shelves * 2.5
-        fig_height = max_layers_all * 1.2 + 1
-        fig, ax = plt.subplots(1, 1, figsize=(fig_width, fig_height))
-        ax.set_xlim(0, num_shelves)
-        ax.set_ylim(0, max_layers_all)
-        ax.axis('off')
-        
-        # 为每个货架分配背景颜色（与其他维度图一致）
-        shelf_bg_colors = [
-            '#E8F4F8',  # 浅蓝色（更柔和）
-            '#FFFACD',  # 浅黄色（更柔和）
-            '#FFE4B5',  # 浅橙色（更柔和）
-            '#FFE4E1',  # 浅粉色（更柔和）
-            '#E0F7FA',  # 浅青色（更柔和）
-            '#F3E5F5',  # 浅紫色（更柔和）
-        ]
-        
-        # 为每个货架绘制
-        for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
-            shelf_width = 0.9
-            shelf_x_left = idx + 0.05
-            shelf_x_right = idx + 0.95
-            
-            # 绘制货架背景
-            bg_color = shelf_bg_colors[idx % len(shelf_bg_colors)]
-            bg_rect = patches.Rectangle(
-                (shelf_x_left, 0), shelf_width, max_layers_all,
-                linewidth=2, edgecolor='#666666', facecolor=bg_color,
-                alpha=0.3, zorder=0
-            )
-            ax.add_patch(bg_rect)
-            
-            # 按层绘制框架
-            current_y = max_layers_all - 0.1
-            
-            for layer in sorted(layers.keys()):
-                positions = layers[layer]
-                num_positions = len(positions)
-                block_height = 0.9
-                block_width = shelf_width / num_positions
-                
-                # 绘制每个位置的框架块
-                for i, pos in enumerate(sorted(positions, key=lambda x: int(x) if str(x).isdigit() else float('inf'))):
-                    x_left = shelf_x_left + i * block_width
-                    x_right = shelf_x_left + (i + 1) * block_width
-                    y_bottom = current_y - block_height
-                    y_top = current_y
-                    
-                    # 绘制框架块（圆角矩形，与其他维度图一致）
-                    block = patches.FancyBboxPatch(
-                        (x_left + 0.01, y_bottom + 0.01),
-                        block_width - 0.02, block_height - 0.02,
-                        boxstyle="round,pad=0.02",
-                        linewidth=1.2,
-                        edgecolor='#000000',
-                        facecolor='#FFFFFF',
-                        alpha=1.0,
-                        zorder=1
-                    )
-                    ax.add_patch(block)
-                    
-                    # 标注位置（确保中文显示）
-                    try:
-                        font_prop = font_manager.FontProperties(family='sans-serif')
-                        ax.text(
-                            (x_left + x_right) / 2,
-                            (y_bottom + y_top) / 2,
-                            str(pos),
-                            ha='center',
-                            va='center',
-                            fontsize=9,
-                            fontweight='bold',
-                            color='#000000',
-                            zorder=2,
-                            fontproperties=font_prop
-                        )
-                    except:
-                        ax.text(
-                            (x_left + x_right) / 2,
-                            (y_bottom + y_top) / 2,
-                            str(pos),
-                            ha='center',
-                            va='center',
-                            fontsize=9,
-                            fontweight='bold',
-                            color='#000000',
-                            zorder=2
-                        )
-                
-                current_y -= 1.0
-        
-        # 添加标题（确保中文显示）
-        if template_name:
-            title = f'{template_name}-货架框架图'
+        if num_shelves == 1:
+            fig, ax = plt.subplots(1, 1, figsize=(5, 8))
+            axes = [ax]
         else:
-            title = '货架框架图'
-        try:
-            font_prop = font_manager.FontProperties(family='sans-serif', size=16, weight='bold')
-            plt.title(title, fontproperties=font_prop, pad=20)
-        except:
-            plt.title(title, fontsize=16, fontweight='bold', pad=20)
+            fig, axes = plt.subplots(1, num_shelves, figsize=(5 * num_shelves, 8))
+        
+        for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
+            ax = axes[idx]
+            max_layers = max(layers.keys()) if layers else 1
+            max_positions = max(len(positions) for positions in layers.values()) if layers else 1
+            
+            # 绘制货架框架
+            for layer in range(1, max_layers + 1):
+                if layer in layers:
+                    positions = layers[layer]
+                    num_positions = len(positions)
+                    
+                    # 绘制层
+                    y_bottom = max_layers - layer
+                    y_top = y_bottom + 0.8
+                    
+                    # 绘制分隔线
+                    for i in range(num_positions + 1):
+                        x = i * (1.0 / (num_positions + 1))
+                        ax.plot([x, x], [y_bottom, y_top], 'k-', linewidth=1)
+                    
+                    # 绘制上下边框
+                    ax.plot([0, 1], [y_bottom, y_bottom], 'k-', linewidth=2)
+                    ax.plot([0, 1], [y_top, y_top], 'k-', linewidth=2)
+                    
+                    # 标注位置
+                    for i, pos in enumerate(positions):
+                        x_center = (i + 0.5) * (1.0 / (num_positions + 1))
+                        ax.text(x_center, y_bottom + 0.4, str(pos), 
+                               ha='center', va='center', fontsize=8)
+            
+            ax.set_xlim(-0.1, 1.1)
+            ax.set_ylim(-0.1, max_layers + 0.1)
+            ax.set_title(f'货架 {shelf_num}', fontsize=12, fontweight='bold')
+            ax.set_xlabel('位置', fontsize=10)
+            ax.set_ylabel('层数', fontsize=10)
+            ax.set_aspect('equal')
+            ax.grid(True, alpha=0.3)
+            ax.invert_yaxis()
         
         plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"货架框架图已保存至: {output_path}")
         plt.close()
     
@@ -630,62 +541,26 @@ class LayoutGenerator:
                                     text = text[:j+1] + '\n' + text[j+1:]
                                     break
                         
-                        # 设置字体属性，确保中文显示
-                        try:
-                            font_prop = font_manager.FontProperties(family='sans-serif')
-                            ax.text(
-                                (x_left + x_right) / 2,
-                                (y_bottom + y_top) / 2,
-                                text,
-                                ha='center',
-                                va='center',
-                                fontsize=fontsize,
-                                fontweight='bold',
-                                color='#000000',
-                                zorder=2,
-                                fontproperties=font_prop
-                            )
-                        except:
-                        # 设置字体属性，确保中文显示
-                        try:
-                            font_prop = font_manager.FontProperties(family='sans-serif')
-                            ax.text(
-                                (x_left + x_right) / 2,
-                                (y_bottom + y_top) / 2,
-                                text,
-                                ha='center',
-                                va='center',
-                                fontsize=fontsize,
-                                fontweight='bold',
-                                color='#000000',
-                                zorder=2,
-                                fontproperties=font_prop
-                            )
-                        except:
-                            ax.text(
-                                (x_left + x_right) / 2,
-                                (y_bottom + y_top) / 2,
-                                text,
-                                ha='center',
-                                va='center',
-                                fontsize=fontsize,
-                                fontweight='bold',
-                                color='#000000',
-                                zorder=2
-                            )
+                        ax.text(
+                            (x_left + x_right) / 2,
+                            (y_bottom + y_top) / 2,
+                            text,
+                            ha='center',
+                            va='center',
+                            fontsize=fontsize,
+                            fontweight='bold',
+                            color='#000000',
+                            zorder=2
+                        )
                 
                 current_y -= 1.0
         
-        # 添加标题（确保中文显示）
+        # 添加标题
         if template_name:
             title = f'{template_name}-{dimension_name}布局图'
         else:
             title = f'{dimension_name}布局图'
-        try:
-            font_prop = font_manager.FontProperties(family='sans-serif', size=16, weight='bold')
-            plt.title(title, fontproperties=font_prop, pad=20)
-        except:
-            plt.title(title, fontsize=16, fontweight='bold', pad=20)
+        plt.title(title, fontsize=16, fontweight='bold', pad=20)
         
         # 添加图例
         if category_color_map:
@@ -726,9 +601,6 @@ class LayoutGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
         print(f"{dimension_name}布局图已保存至: {output_path}")
         plt.close()
-        
-        # 返回维度字段名，用于Excel导出
-        return category_col
     
     def run(self, product_file: str = None, layout_file: str = None):
         """
@@ -761,7 +633,7 @@ class LayoutGenerator:
                 framework_filename = f"{template_name}-货架框架图.png"
             else:
                 framework_filename = "货架框架图.png"
-            self.generate_shelf_framework(shelf_info, template_name, framework_filename)
+            self.generate_shelf_framework(shelf_info, framework_filename)
             
             # 6. 生成五个维度的商品布局图
             dimensions = [
