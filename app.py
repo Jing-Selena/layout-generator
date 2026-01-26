@@ -173,9 +173,56 @@ if generate_button:
                     if template_name:
                         st.info(f"🏷️ 货架模板名称: {template_name}")
                     
-                    # 下载按钮
+                    # 在页面上展示所有布局图
                     st.markdown("---")
-                    st.header("📥 下载布局图")
+                    st.header("🖼️ 布局图预览")
+                    
+                    # 使用标签页展示不同类型的图
+                    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                        "📐 货架框架图",
+                        "📊 项目中类",
+                        "📊 项目小类",
+                        "📊 项目细类",
+                        "📊 销售类别",
+                        "📊 品牌"
+                    ])
+                    
+                    # 定义每个标签页对应的文件索引（货架框架图是第0个，然后是5个维度图）
+                    tab_configs = [
+                        (0, tab1, "货架框架图"),  # 货架框架图
+                        (1, tab2, "项目中类"),    # 项目中类
+                        (2, tab3, "项目小类"),    # 项目小类
+                        (3, tab4, "项目细类"),    # 项目细类
+                        (4, tab5, "销售类别"),    # 销售类别
+                        (5, tab6, "品牌"),        # 品牌
+                    ]
+                    
+                    # 显示每个标签页的图片
+                    for idx, (file_idx, tab, tab_name) in enumerate(tab_configs):
+                        if file_idx < len(generated_files):
+                            file_path, filename = generated_files[file_idx]
+                            if os.path.exists(file_path):
+                                with tab:
+                                    st.subheader(f"📊 {filename.replace('.png', '')}")
+                                    with open(file_path, "rb") as f:
+                                        image_data = f.read()
+                                    st.image(image_data, use_container_width=True)
+                                    
+                                    # 在每个图片下方添加下载按钮
+                                    col1, col2, col3 = st.columns([1, 1, 1])
+                                    with col2:
+                                        st.download_button(
+                                            label=f"📥 下载 {filename}",
+                                            data=image_data,
+                                            file_name=filename,
+                                            mime="image/png",
+                                            key=f"download_{idx}_{filename}",
+                                            use_container_width=True
+                                        )
+                    
+                    # 下载按钮区域
+                    st.markdown("---")
+                    st.header("📥 批量下载")
                     
                     # 下载ZIP文件
                     st.download_button(
@@ -185,22 +232,6 @@ if generate_button:
                         mime="application/zip",
                         use_container_width=True
                     )
-                    
-                    # 单独下载每个文件
-                    st.markdown("### 单独下载")
-                    cols = st.columns(3)
-                    for idx, (file_path, filename) in enumerate(generated_files):
-                        if os.path.exists(file_path):
-                            with open(file_path, "rb") as f:
-                                file_data = f.read()
-                            with cols[idx % 3]:
-                                st.download_button(
-                                    label=f"📄 {filename}",
-                                    data=file_data,
-                                    file_name=filename,
-                                    mime="image/png",
-                                    use_container_width=True
-                                )
                     
             except Exception as e:
                 st.error(f"❌ 生成布局图时出错: {str(e)}")
