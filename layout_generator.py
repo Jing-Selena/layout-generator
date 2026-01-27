@@ -11,12 +11,47 @@ import matplotlib.patches as patches
 from matplotlib import font_manager
 import os
 import glob
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'STHeiti']
-plt.rcParams['axes.unicode_minus'] = False
+
+def _setup_chinese_font():
+    """设置中文字体，解决图中中文显示为方框的问题。Docker 需安装 fonts-wqy-zenhei。"""
+    # 按优先级：Linux(Docker) 常用 -> macOS -> Windows
+    chinese_fonts = [
+        'WenQuanYi Zen Hei', 'WenQuanYi Micro Hei', 'WenQuanYi Micro Hei Mono',
+        'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Source Han Sans CN',
+        'Microsoft YaHei', 'SimHei', 'STHeiti', 'Heiti SC',
+        'Arial Unicode MS', 'PingFang SC', 'STSong', 'SimSun', 'KaiTi',
+    ]
+    for font_name in chinese_fonts:
+        try:
+            f = font_manager.FontProperties(family=font_name)
+            path = font_manager.findfont(f)
+            if path and 'DejaVu' not in path:
+                plt.rcParams['font.sans-serif'] = [font_name]
+                plt.rcParams['axes.unicode_minus'] = False
+                return
+        except Exception:
+            continue
+    try:
+        for fpath in font_manager.findSystemFonts():
+            low = fpath.lower()
+            if any(k in low for k in ('cjk', 'zenhei', 'wqy', 'noto', 'simhei', 'yahei', 'heiti', 'pingfang')):
+                font_manager.fontManager.addfont(fpath)
+                prop = font_manager.FontProperties(fname=fpath)
+                name = prop.get_name()
+                if name:
+                    plt.rcParams['font.sans-serif'] = [name]
+                    plt.rcParams['axes.unicode_minus'] = False
+                    return
+    except Exception:
+        pass
+    plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'WenQuanYi Micro Hei', 'SimHei', 'Microsoft YaHei', 'STHeiti', 'Arial Unicode MS']
+    plt.rcParams['axes.unicode_minus'] = False
+
+
+_setup_chinese_font()
 
 
 class LayoutGenerator:
@@ -256,68 +291,119 @@ class LayoutGenerator:
                     shelf_info[shelf][layer] = sorted(shelf_info[shelf][layer])
         
         return shelf_info, shelf_col, layer_col, position_col
+
+    @staticmethod
+    def _format_position_range(positions: List) -> str:
+        """将位置列表格式化为合并后的表示，如 [1,2,3] -> '1-3'，[1,3,5] -> '1,3,5'"""
+        if not positions:
+            return ""
+        try:
+            nums = [int(str(p).strip()) for p in positions]
+            nums = sorted(set(nums))
+            if len(nums) == 1:
+                return str(nums[0])
+            # 检查是否连续
+            if nums == list(range(nums[0], nums[-1] + 1)):
+                return f"{nums[0]}-{nums[-1]}"
+            return ",".join(str(x) for x in nums)
+        except (ValueError, TypeError):
+            return ",".join(str(p) for p in positions)
+
+    def _write_merged_excel(self, excel_path: str, template_name: str, rows: List[Dict]):
+        """将合并后的数据写入 Excel，列：货架模板名称，*货架序号，*层数，*位置，合并后的维度"""
+        if not rows:
+            return
+        col_names = ["货架模板名称", "*货架序号", "*层数", "*位置", "合并后的维度"]
+        df = pd.DataFrame(rows)
+        df = df.reindex(columns=[c for c in col_names if c in df.columns])
+        df.to_excel(excel_path, index=False)
+        print(f"合并明细表已保存至: {excel_path}")
     
-    def generate_shelf_framework(self, shelf_info: Dict, output_path: str = "货架框架图.png"):
+    def generate_shelf_framework(self, shelf_info: Dict, output_path: str = "货架框架图.png",
+                                  template_name: str = ""):
         """
-        生成货架框架图
+        生成货架框架图（与维度图使用相同的布局和坐标系：单图、货架并排、层自上而下）
         
         Args:
             shelf_info: 货架信息字典
             output_path: 输出文件路径
+            template_name: 货架模板名称
         """
         num_shelves = len(shelf_info)
         if num_shelves == 0:
             raise ValueError("未找到任何货架信息，请检查数据")
-        
-        if num_shelves == 1:
-            fig, ax = plt.subplots(1, 1, figsize=(5, 8))
-            axes = [ax]
-        else:
-            fig, axes = plt.subplots(1, num_shelves, figsize=(5 * num_shelves, 8))
-        
+
+        max_layers_all = max(max(layers.keys()) if layers else 1 for layers in shelf_info.values())
+        shelf_bg_colors = [
+            '#E8F4F8', '#FFFACD', '#FFE4B5', '#FFE4E1', '#E0F7FA', '#F3E5F5',
+        ]
+
+        fig_width = num_shelves * 2.5
+        fig_height = max_layers_all * 1.2 + 1
+        fig, ax = plt.subplots(1, 1, figsize=(fig_width, fig_height))
+        ax.set_xlim(0, num_shelves)
+        ax.set_ylim(0, max_layers_all)
+        ax.axis('off')
+
         for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
-            ax = axes[idx]
-            max_layers = max(layers.keys()) if layers else 1
-            max_positions = max(len(positions) for positions in layers.values()) if layers else 1
-            
-            # 绘制货架框架
-            for layer in range(1, max_layers + 1):
-                if layer in layers:
-                    positions = layers[layer]
-                    num_positions = len(positions)
-                    
-                    # 绘制层
-                    y_bottom = max_layers - layer
-                    y_top = y_bottom + 0.8
-                    
-                    # 绘制分隔线
-                    for i in range(num_positions + 1):
-                        x = i * (1.0 / (num_positions + 1))
-                        ax.plot([x, x], [y_bottom, y_top], 'k-', linewidth=1)
-                    
-                    # 绘制上下边框
-                    ax.plot([0, 1], [y_bottom, y_bottom], 'k-', linewidth=2)
-                    ax.plot([0, 1], [y_top, y_top], 'k-', linewidth=2)
-                    
-                    # 标注位置
-                    for i, pos in enumerate(positions):
-                        x_center = (i + 0.5) * (1.0 / (num_positions + 1))
-                        ax.text(x_center, y_bottom + 0.4, str(pos), 
-                               ha='center', va='center', fontsize=8)
-            
-            ax.set_xlim(-0.1, 1.1)
-            ax.set_ylim(-0.1, max_layers + 0.1)
-            ax.set_title(f'货架 {shelf_num}', fontsize=12, fontweight='bold')
-            ax.set_xlabel('位置', fontsize=10)
-            ax.set_ylabel('层数', fontsize=10)
-            ax.set_aspect('equal')
-            ax.grid(True, alpha=0.3)
-            ax.invert_yaxis()
-        
+            shelf_width = 0.9
+            shelf_x_left = idx + 0.05
+            shelf_x_right = idx + 0.95
+            bg_color = shelf_bg_colors[idx % len(shelf_bg_colors)]
+            bg_rect = patches.Rectangle(
+                (shelf_x_left, 0), shelf_width, max_layers_all,
+                linewidth=2, edgecolor='#666666', facecolor=bg_color,
+                alpha=0.3, zorder=0
+            )
+            ax.add_patch(bg_rect)
+
+            current_y = max_layers_all - 0.1
+            for layer in sorted(layers.keys()):
+                positions = sorted(layers[layer], key=lambda x: int(x) if str(x).isdigit() else float('inf'))
+                num_positions = len(positions)
+                block_height = 0.9
+                block_width = shelf_width / num_positions
+
+                for i, pos in enumerate(positions):
+                    x_left = shelf_x_left + i * block_width
+                    x_right = shelf_x_left + (i + 1) * block_width
+                    y_bottom = current_y - block_height
+                    y_top = current_y
+                    cell = patches.FancyBboxPatch(
+                        (x_left + 0.01, y_bottom + 0.01),
+                        x_right - x_left - 0.02, block_height - 0.02,
+                        boxstyle="round,pad=0.02",
+                        linewidth=1.2, edgecolor='#000000', facecolor='#FFFFFF', alpha=1.0, zorder=1
+                    )
+                    ax.add_patch(cell)
+                    ax.text(
+                        (x_left + x_right) / 2, (y_bottom + y_top) / 2, str(pos),
+                        ha='center', va='center', fontsize=9, fontweight='bold', color='#000000', zorder=2
+                    )
+                current_y -= 1.0
+
+        title = f'{template_name}-货架框架图' if template_name else '货架框架图'
+        plt.title(title, fontsize=16, fontweight='bold', pad=20)
         plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
         print(f"货架框架图已保存至: {output_path}")
         plt.close()
+
+        # 生成对应的 Excel 表：货架模板名称，*货架序号，*层数，*位置，合并后的维度（框架图无维度，为空）
+        excel_path = output_path.rsplit(".", 1)[0] + ".xlsx"
+        rows = []
+        for shelf_num, layers in sorted(shelf_info.items()):
+            for layer in sorted(layers.keys()):
+                for pos in sorted(layers[layer], key=lambda x: int(x) if str(x).isdigit() else float("inf")):
+                    rows.append({
+                        "货架模板名称": template_name or "",
+                        "*货架序号": shelf_num,
+                        "*层数": layer,
+                        "*位置": str(pos),
+                        "合并后的维度": "",
+                    })
+        if rows:
+            self._write_merged_excel(excel_path, template_name, rows)
     
     def generate_product_layout(self, shelf_info: Dict, shelf_col: str, 
                                 layer_col: str, position_col: str,
@@ -399,8 +485,9 @@ class LayoutGenerator:
         ax.set_ylim(0, max_layers_all)
         ax.axis('off')
         
-        # 存储所有类别用于图例
+        # 存储所有类别用于图例；收集合并后的块用于导出 Excel
         all_categories = set()
+        dimension_excel_rows = []
         
         # 为每个货架绘制
         for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
@@ -488,11 +575,19 @@ class LayoutGenerator:
                         'positions': positions[start_idx:end_idx]
                     })
                 
-                # 绘制合并后的块
+                # 绘制合并后的块，并收集用于 Excel
                 for block_info in merged_blocks:
                     start_idx = block_info['start_idx']
                     end_idx = block_info['end_idx']
                     category = block_info['category']
+                    pos_list = block_info['positions']
+                    dimension_excel_rows.append({
+                        "货架模板名称": template_name or "",
+                        "*货架序号": shelf_num,
+                        "*层数": layer,
+                        "*位置": self._format_position_range(pos_list),
+                        "合并后的维度": category or "",
+                    })
                     
                     # 分配颜色
                     if category and category not in category_color_map:
@@ -601,6 +696,11 @@ class LayoutGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
         print(f"{dimension_name}布局图已保存至: {output_path}")
         plt.close()
+
+        # 生成对应的 Excel 表：货架模板名称，*货架序号，*层数，*位置，合并后的维度
+        excel_path = output_path.rsplit(".", 1)[0] + ".xlsx"
+        if dimension_excel_rows:
+            self._write_merged_excel(excel_path, template_name, dimension_excel_rows)
     
     def run(self, product_file: str = None, layout_file: str = None):
         """
@@ -628,12 +728,12 @@ class LayoutGenerator:
             for shelf, layers in shelf_info.items():
                 print(f"  货架 {shelf}: {len(layers)} 层")
             
-            # 5. 生成货架框架图
+            # 5. 生成货架框架图（与维度图同布局，并生成对应 Excel）
             if template_name:
                 framework_filename = f"{template_name}-货架框架图.png"
             else:
                 framework_filename = "货架框架图.png"
-            self.generate_shelf_framework(shelf_info, framework_filename)
+            self.generate_shelf_framework(shelf_info, framework_filename, template_name or "")
             
             # 6. 生成五个维度的商品布局图
             dimensions = [
