@@ -15,23 +15,13 @@ import zipfile
 from io import BytesIO
 from layout_generator import LayoutGenerator
 
-# 设置页面配置
+# 设置页面配置（中文字体由 layout_generator 内的 _setup_chinese_font 统一设置）
 st.set_page_config(
     page_title="布局图生成器",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# ========== 优化：全局Matplotlib中文字体配置（跨系统兼容+高优先级） ==========
-plt.rcParams.update({
-    'font.sans-serif': ['SimHei', 'Arial Unicode MS', 'WenQuanYi Zen Hei', 'DejaVu Sans'],
-    'axes.unicode_minus': False,  # 解决负号显示为方框问题
-    'font.family': 'sans-serif',
-    'font.family': 'sans-serif'
-})
-# 额外添加：确保新创建的Figure都继承字体配置
-plt.rcParams['figure.facecolor'] = 'white'  # 同时解决生成图片背景透明/发黑问题
 
 # 标题
 st.title("📊 布局图生成器")
@@ -58,13 +48,10 @@ with st.sidebar:
        - 必须包含列：`*位置`（或`位置`）
     
     ### 生成内容
-    工具会生成以下布局图：
-    - 货架框架图
-    - 项目中类布局图
-    - 项目小类布局图
-    - 项目细类布局图
-    - 销售类别布局图
-    - 品牌布局图
+    工具会生成以下布局图及对应的 Excel 表（每图一个 Excel）：
+    - 货架框架图 + 合并明细表
+    - 项目中类 / 项目小类 / 项目细类 / 销售类别 / 品牌 布局图 + 合并明细表
+    Excel 列：货架模板名称、*货架序号、*层数、*位置、合并后的维度
     """)
 
 # 文件上传区域
@@ -111,11 +98,6 @@ if generate_button:
                     with open(layout_path, "wb") as f:
                         f.write(layout_file.getbuffer())
                     
-                    # ========== 关键修改：创建生成器前，再次强制配置字体 ==========
-                    # 确保外部LayoutGenerator类中的Matplotlib绘图继承字体配置
-                    plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'WenQuanYi Zen Hei']
-                    plt.rcParams['axes.unicode_minus'] = False
-                    
                     # 创建生成器实例
                     generator = LayoutGenerator(temp_dir)
                     
@@ -131,19 +113,24 @@ if generate_button:
                     # 获取货架信息
                     shelf_info, shelf_col, layer_col, position_col = generator.get_shelf_info()
                     
-                    # 生成布局图
+                    # 生成布局图：generated_images 仅用于页面标签预览，generated_files 含图+Excel 用于 ZIP
+                    generated_images = []
                     generated_files = []
                     
-                    # 生成货架框架图
+                    # 生成货架框架图（与维度图同布局，并生成对应 Excel）
                     if template_name:
                         framework_filename = f"{template_name}-货架框架图.png"
                     else:
                         framework_filename = "货架框架图.png"
                     framework_path = os.path.join(temp_dir, framework_filename)
-                    generator.generate_shelf_framework(shelf_info, framework_path)
+                    generator.generate_shelf_framework(shelf_info, framework_path, template_name or "")
+                    generated_images.append((framework_path, framework_filename))
                     generated_files.append((framework_path, framework_filename))
+                    _excel = framework_path.rsplit(".", 1)[0] + ".xlsx"
+                    if os.path.exists(_excel):
+                        generated_files.append((_excel, os.path.basename(_excel)))
                     
-                    # 生成五个维度的商品布局图
+                    # 生成五个维度的商品布局图及对应 Excel
                     dimensions = [
                         ("项目中类", "项目中类"),
                         ("项目小类", "项目小类"),
@@ -162,9 +149,13 @@ if generate_button:
                             shelf_info, shelf_col, layer_col, position_col,
                             field_name, display_name, template_name, output_path
                         )
+                        generated_images.append((output_path, output_filename))
                         generated_files.append((output_path, output_filename))
+                        _excel = output_path.rsplit(".", 1)[0] + ".xlsx"
+                        if os.path.exists(_excel):
+                            generated_files.append((_excel, os.path.basename(_excel)))
                     
-                    # 创建ZIP文件
+                    # 创建ZIP文件（含所有 PNG 与对应 Excel）
                     zip_buffer = BytesIO()
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         for file_path, filename in generated_files:
@@ -184,34 +175,65 @@ if generate_button:
                     if template_name:
                         st.info(f"🏷️ 货架模板名称: {template_name}")
                     
-                    # 下载按钮
+                    # 在页面上展示所有布局图
                     st.markdown("---")
-                    st.header("📥 下载布局图")
+                    st.header("🖼️ 布局图预览")
+                    
+                    # 使用标签页展示不同类型的图
+                    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                        "📐 货架框架图",
+                        "📊 项目中类",
+                        "📊 项目小类",
+                        "📊 项目细类",
+                        "📊 销售类别",
+                        "📊 品牌"
+                    ])
+                    
+                    # 定义每个标签页对应的文件索引（货架框架图是第0个，然后是5个维度图）
+                    tab_configs = [
+                        (0, tab1, "货架框架图"),  # 货架框架图
+                        (1, tab2, "项目中类"),    # 项目中类
+                        (2, tab3, "项目小类"),    # 项目小类
+                        (3, tab4, "项目细类"),    # 项目细类
+                        (4, tab5, "销售类别"),    # 销售类别
+                        (5, tab6, "品牌"),        # 品牌
+                    ]
+                    
+                    # 显示每个标签页的图片（仅 PNG）
+                    for idx, (file_idx, tab, tab_name) in enumerate(tab_configs):
+                        if file_idx < len(generated_images):
+                            file_path, filename = generated_images[file_idx]
+                            if os.path.exists(file_path):
+                                with tab:
+                                    st.subheader(f"📊 {filename.replace('.png', '')}")
+                                    with open(file_path, "rb") as f:
+                                        image_data = f.read()
+                                    st.image(image_data, use_container_width=True)
+                                    
+                                    # 在每个图片下方添加下载按钮
+                                    col1, col2, col3 = st.columns([1, 1, 1])
+                                    with col2:
+                                        st.download_button(
+                                            label=f"📥 下载 {filename}",
+                                            data=image_data,
+                                            file_name=filename,
+                                            mime="image/png",
+                                            key=f"download_{idx}_{filename}",
+                                            use_container_width=True
+                                        )
+                    
+                    # 下载按钮区域
+                    st.markdown("---")
+                    st.header("📥 批量下载")
                     
                     # 下载ZIP文件
                     st.download_button(
-                        label="📦 下载所有布局图（ZIP压缩包）",
+                        label="📦 下载所有布局图与Excel合并明细表（ZIP压缩包）",
                         data=zip_buffer,
-                        file_name=f"{template_name if template_name else '布局图'}-所有图纸.zip",
+                        file_name=f"{template_name if template_name else '布局图'}-所有图纸与Excel.zip",
                         mime="application/zip",
                         use_container_width=True
                     )
-                    
-                    # 单独下载每个文件
-                    st.markdown("### 单独下载")
-                    cols = st.columns(3)
-                    for idx, (file_path, filename) in enumerate(generated_files):
-                        if os.path.exists(file_path):
-                            with open(file_path, "rb") as f:
-                                file_data = f.read()
-                            with cols[idx % 3]:
-                                st.download_button(
-                                    label=f"📄 {filename}",
-                                    data=file_data,
-                                    file_name=filename,
-                                    mime="image/png",
-                                    use_container_width=True
-                                )
                     
             except Exception as e:
                 st.error(f"❌ 生成布局图时出错: {str(e)}")
