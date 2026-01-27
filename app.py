@@ -123,7 +123,7 @@ if generate_button:
                     else:
                         framework_filename = "货架框架图.png"
                     framework_path = os.path.join(temp_dir, framework_filename)
-                    generator.generate_shelf_framework(shelf_info, framework_path, template_name or "")
+                    generator.generate_shelf_framework(shelf_info, framework_path, template_name=template_name or "")
                     generated_images.append((framework_path, framework_filename))
                     generated_files.append((framework_path, framework_filename))
                     _excel = framework_path.rsplit(".", 1)[0] + ".xlsx"
