@@ -401,16 +401,10 @@ class LayoutGenerator:
             return ",".join(str(p) for p in positions)
 
     def _write_merged_excel(self, excel_path: str, template_name: str, rows: List[Dict], type_code: str = None):
-        """将合并后的数据写入 Excel。
-        type_code 为 None 时（如框架图）：货架模板名称，*货架序号，*层数，*位置，合并后的维度
-        type_code 有值时（维度图）：货架模板名称，*货架序号，*层数，*位置，<type_code 作为维度列名>，type
-        """
+        """将合并后的数据写入 Excel，列名为英文：template_name, shelf_id, layer_id, pos_id, value, dimension_name"""
         if not rows:
             return
-        if type_code is None:
-            col_names = ["货架模板名称", "*货架序号", "*层数", "*位置", "合并后的维度"]
-        else:
-            col_names = ["货架模板名称", "*货架序号", "*层数", "*位置", type_code, "type"]
+        col_names = ["template_name", "shelf_id", "layer_id", "pos_id", "value", "dimension_name"]
         df = pd.DataFrame(rows)
         df = df.reindex(columns=[c for c in col_names if c in df.columns])
         df.to_excel(excel_path, index=False)
@@ -486,18 +480,19 @@ class LayoutGenerator:
         print(f"货架框架图已保存至: {output_path}")
         plt.close()
 
-        # 生成对应的 Excel 表：货架模板名称，*货架序号，*层数，*位置，合并后的维度（框架图无维度，为空）
+        # 生成对应的 Excel 表，列名：template_name, shelf_id, layer_id, pos_id, value, dimension_name
         excel_path = output_path.rsplit(".", 1)[0] + ".xlsx"
         rows = []
         for shelf_num, layers in sorted(shelf_info.items()):
             for layer in sorted(layers.keys()):
                 for pos in sorted(layers[layer], key=lambda x: int(x) if str(x).isdigit() else float("inf")):
                     rows.append({
-                        "货架模板名称": template_name or "",
-                        "*货架序号": shelf_num,
-                        "*层数": layer,
-                        "*位置": str(pos),
-                        "合并后的维度": "",
+                        "template_name": template_name or "",
+                        "shelf_id": shelf_num,
+                        "layer_id": layer,
+                        "pos_id": str(pos),
+                        "value": "",
+                        "dimension_name": "",
                     })
         if rows:
             self._write_merged_excel(excel_path, template_name, rows)
@@ -680,16 +675,13 @@ class LayoutGenerator:
                     category = block_info['category']
                     pos_list = block_info['positions']
                     row = {
-                        "货架模板名称": template_name or "",
-                        "*货架序号": shelf_num,
-                        "*层数": layer,
-                        "*位置": self._format_position_range(pos_list),
+                        "template_name": template_name or "",
+                        "shelf_id": shelf_num,
+                        "layer_id": layer,
+                        "pos_id": self._format_position_range(pos_list),
+                        "value": category or "",
+                        "dimension_name": type_code if type_code is not None else "",
                     }
-                    if type_code is not None:
-                        row[type_code] = category or ""
-                        row["type"] = type_code
-                    else:
-                        row["合并后的维度"] = category or ""
                     dimension_excel_rows.append(row)
                     
                     # 分配颜色
