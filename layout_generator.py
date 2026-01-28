@@ -384,6 +384,16 @@ class LayoutGenerator:
     }
 
     @staticmethod
+    def _shelf_items_sorted(shelf_info: Dict):
+        """按货架序号数值排序（1,2,...,9,10,11），避免字符串排序导致 10 排在 2 前。"""
+        def key(item):
+            k = str(item[0]).strip()
+            if k.isdigit():
+                return (0, int(k))
+            return (1, k)
+        return sorted(shelf_info.items(), key=key)
+
+    @staticmethod
     def _format_position_range(positions: List) -> str:
         """将位置列表格式化为合并后的表示，如 [1,2,3] -> '1-3'，[1,3,5] -> '1,3,5'"""
         if not positions:
@@ -436,7 +446,7 @@ class LayoutGenerator:
         ax.set_ylim(0, max_layers_all)
         ax.axis('off')
 
-        for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
+        for idx, (shelf_num, layers) in enumerate(self._shelf_items_sorted(shelf_info)):
             shelf_width = 0.9
             shelf_x_left = idx + 0.05
             shelf_x_right = idx + 0.95
@@ -483,7 +493,7 @@ class LayoutGenerator:
         # 生成对应的 Excel 表，列名：template_name, shelf_id, layer_id, pos_id, value, dimension_name
         excel_path = output_path.rsplit(".", 1)[0] + ".xlsx"
         rows = []
-        for shelf_num, layers in sorted(shelf_info.items()):
+        for shelf_num, layers in self._shelf_items_sorted(shelf_info):
             for layer in sorted(layers.keys()):
                 for pos in sorted(layers[layer], key=lambda x: int(x) if str(x).isdigit() else float("inf")):
                     rows.append({
@@ -582,8 +592,8 @@ class LayoutGenerator:
         dimension_excel_rows = []
         type_code = self.DIMENSION_TYPE_MAP.get(dimension_name)
 
-        # 为每个货架绘制
-        for idx, (shelf_num, layers) in enumerate(sorted(shelf_info.items())):
+        # 为每个货架绘制（按货架序号数值排序：1,2,...,9,10）
+        for idx, (shelf_num, layers) in enumerate(self._shelf_items_sorted(shelf_info)):
             shelf_x_center = idx + 0.5
             shelf_width = 0.9
             shelf_x_left = idx + 0.05
