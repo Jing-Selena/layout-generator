@@ -829,20 +829,19 @@ class LayoutGenerator:
                 framework_filename = "货架框架图.png"
             self.generate_shelf_framework(shelf_info, framework_filename, template_name or "")
             
-            # 6. 生成五个维度的商品布局图
+            # 6. 生成五个维度的商品布局图（下载文件名：模板名_布局图_<type_code>，无中文维度名）
             dimensions = [
                 ("项目中类", "项目中类"),
                 ("项目小类", "项目小类"),
                 ("项目细类", "项目细类"),
-                ("项目商品类别", "销售类别"),  # 字段名是"项目商品类别"，但显示为"销售类别"
-                ("品牌名称", "品牌")  # 字段名是"品牌名称"，但显示为"品牌"
+                ("项目商品类别", "销售类别"),
+                ("品牌名称", "品牌")
             ]
-            
+            if template_name:
+                output_filename = f"{template_name}_布局图.png"
+            else:
+                output_filename = "布局图.png"
             for field_name, display_name in dimensions:
-                if template_name:
-                    output_filename = f"{template_name}-{display_name}布局图.png"
-                else:
-                    output_filename = f"{display_name}布局图.png"
                 self.generate_product_layout(
                     shelf_info, shelf_col, layer_col, position_col,
                     field_name, display_name, template_name, output_filename
