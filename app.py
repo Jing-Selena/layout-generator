@@ -98,12 +98,15 @@ if generate_button and product_file is not None and layout_file is not None:
                     ("项目商品类别", "销售类别"),
                     ("品牌名称", "品牌")
                 ]
-                results = []  # [(png_bytes, png_name, xlsx_bytes or None, xlsx_name or None), ...]
+                results = []
+                download_png_name = f"{template_name}_布局图.png" if template_name else "布局图.png"
+                download_xlsx_name = f"{template_name}_布局图.xlsx" if template_name else "布局图.xlsx"
                 for field_name, display_name in dimensions:
+                    type_code = LayoutGenerator.DIMENSION_TYPE_MAP.get(display_name, display_name)
                     if template_name:
-                        output_filename = f"{template_name}-{display_name}布局图.png"
+                        output_filename = f"{template_name}_布局图_{type_code}.png"
                     else:
-                        output_filename = f"{display_name}布局图.png"
+                        output_filename = f"布局图_{type_code}.png"
                     output_path = os.path.join(temp_dir, output_filename)
                     generator.generate_product_layout(
                         shelf_info, shelf_col, layer_col, position_col,
@@ -116,8 +119,8 @@ if generate_button and product_file is not None and layout_file is not None:
                     if os.path.exists(xlsx_path):
                         with open(xlsx_path, "rb") as f:
                             xlsx_bytes = f.read()
-                        xlsx_name = os.path.basename(xlsx_path)
-                    results.append((png_bytes, output_filename, xlsx_bytes, xlsx_name))
+                        xlsx_name = download_xlsx_name
+                    results.append((png_bytes, download_png_name, xlsx_bytes, xlsx_name))
 
                 st.session_state["layout_results"] = results
                 st.session_state["layout_meta"] = {
