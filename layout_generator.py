@@ -87,7 +87,7 @@ def _get_chinese_font():
         except Exception:
             continue
 
-    # 4) 运行时下载到 fonts 目录（无本地/系统字体时）
+    # 4) 运行时下载到 fonts 目录（无本地/系统字体时，短超时避免阻塞）
     import urllib.request
     _cache_dir = os.path.join(_base, 'fonts')
     _cache_file = os.path.join(_cache_dir, 'NotoSansCJKsc-Regular.otf')
@@ -101,7 +101,7 @@ def _get_chinese_font():
             for _url in _urls:
                 try:
                     req = urllib.request.Request(_url, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(req, timeout=30) as resp:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
                         with open(_cache_file, 'wb') as f:
                             f.write(resp.read())
                     break
@@ -243,10 +243,16 @@ class LayoutGenerator:
         
         print(f"找到的字段映射: {available_fields}")
         
-        # 合并数据
+        # 合并前统一键列为字符串并规范化（避免 float64 与 object 合并报错；数字 12345.0 与 "12345" 需一致）
         merge_on_left = layout_code_col
         merge_on_right = product_code_col
+        def _norm_code(ser):
+            s = ser.astype(str).str.strip()
+            return s.str.replace(r'\.0$', '', regex=True)
+        self.layout_df[merge_on_left] = _norm_code(self.layout_df[merge_on_left])
+        self.product_df[merge_on_right] = _norm_code(self.product_df[merge_on_right])
         
+        # 合并数据
         self.merged_df = self.layout_df.merge(
             self.product_df,
             left_on=merge_on_left,
