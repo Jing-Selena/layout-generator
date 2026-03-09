@@ -533,13 +533,17 @@ class LayoutGenerator:
         if self.merged_df is None:
             raise ValueError("请先匹配数据")
         
-        # 查找维度字段
+        # 查找维度字段：优先用商品资料表列（合并后带 _product 后缀），否则会用到落位明细同名列（常为空）导致部分层无 value
         category_col = None
         for col in self.merged_df.columns:
-            if dimension_field in str(col):
+            if str(col).strip() == (dimension_field + "_product"):
                 category_col = col
                 break
-        
+        if category_col is None:
+            for col in self.merged_df.columns:
+                if dimension_field in str(col):
+                    category_col = col
+                    break
         if category_col is None:
             print(f"警告: 未找到维度字段 '{dimension_field}'，跳过生成 {dimension_name} 布局图")
             return
