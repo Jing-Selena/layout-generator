@@ -11,6 +11,7 @@ import matplotlib.patches as patches
 from matplotlib import font_manager
 import os
 import glob
+import re
 from typing import Dict, List, Tuple, Optional
 import numpy as np
 
@@ -192,7 +193,9 @@ class LayoutGenerator:
         print(f"商品资料表行数: {len(self.product_df)}")
         
         print(f"正在读取落位明细清单: {layout_file}")
-        self.layout_df = pd.read_excel(layout_file)
+        # 落位明细中商品编码常为长数字，按默认会变成科学计数法(float)，与资料表无法匹配；整表按文本读可保留完整编码
+        self.layout_df = pd.read_excel(layout_file, dtype=str)
+        self.layout_df = self.layout_df.replace('', np.nan)
         print(f"落位明细清单列名: {self.layout_df.columns.tolist()}")
         print(f"落位明细清单行数: {len(self.layout_df)}")
         
@@ -243,12 +246,26 @@ class LayoutGenerator:
         
         print(f"找到的字段映射: {available_fields}")
         
-        # 合并前统一键列为字符串并规范化（避免 float64 与 object 合并报错；数字 12345.0 与 "12345" 需一致）
+        # 合并前统一键列为字符串并规范化（避免 float64 与 object 合并报错；科学计数法转整数字符串以便与资料表匹配）
         merge_on_left = layout_code_col
         merge_on_right = product_code_col
+
         def _norm_code(ser):
             s = ser.astype(str).str.strip()
-            return s.str.replace(r'\.0$', '', regex=True)
+            # 科学计数法如 8.346e+16 转成整数字符串，否则长编码无法与资料表匹配
+            def _one(v):
+                if v in ("", "nan", "None") or pd.isna(v):
+                    return v
+                vs = str(v).strip()
+                if re.match(r"^[\d.]+e[+-]?\d+$", vs, re.I):
+                    try:
+                        return str(int(float(v)))
+                    except (ValueError, TypeError):
+                        return vs
+                return vs
+            s = s.apply(_one)
+            return s.str.replace(r"\.0$", "", regex=True)
+
         self.layout_df[merge_on_left] = _norm_code(self.layout_df[merge_on_left])
         self.product_df[merge_on_right] = _norm_code(self.product_df[merge_on_right])
         
@@ -355,8 +372,8 @@ class LayoutGenerator:
                 continue
             
             shelf = str(shelf).strip()
-            layer = int(layer) if pd.notna(layer) else 0
-            position = str(position).strip()
+            layer = int(float(layer)) if pd.notna(layer) else 0
+            position = self._norm_position(position)
             
             if shelf not in shelf_info:
                 shelf_info[shelf] = {}
@@ -415,6 +432,17 @@ class LayoutGenerator:
             return ",".join(str(x) for x in nums)
         except (ValueError, TypeError):
             return ",".join(str(p) for p in positions)
+
+    @staticmethod
+    def _norm_position(pos) -> str:
+        """统一位置格式，避免 Excel 读成 1.0 与 '1' 不一致导致匹配失败。"""
+        s = str(pos).strip()
+        if s.replace(".", "", 1).isdigit() and "." in s:
+            try:
+                return str(int(float(s)))
+            except (ValueError, TypeError):
+                pass
+        return s
 
     def _write_merged_excel(self, excel_path: str, template_name: str, rows: List[Dict], type_code: str = None):
         """将合并后的数据写入 Excel，列名为英文：template_name, shelf_id, layer_id, pos_id, value, dimension_name"""
@@ -533,17 +561,23 @@ class LayoutGenerator:
         if self.merged_df is None:
             raise ValueError("请先匹配数据")
         
-        # 查找维度字段：优先用商品资料表列（合并后带 _product 后缀），否则会用到落位明细同名列（常为空）导致部分层无 value
-        category_col = None
+        # 查找维度字段：优先用“有值的”列（通常为商品资料表合并后的 _product 列），避免落位明细同名列为空导致部分层无 value
+        candidates = []
         for col in self.merged_df.columns:
-            if str(col).strip() == (dimension_field + "_product"):
-                category_col = col
-                break
-        if category_col is None:
-            for col in self.merged_df.columns:
-                if dimension_field in str(col):
-                    category_col = col
-                    break
+            c = str(col).strip()
+            if dimension_field not in c:
+                continue
+            # 优先带 _product 的列（来自商品资料表）
+            is_product = c == (dimension_field + "_product") or c.endswith("_product")
+            ser = self.merged_df[col]
+            if pd.api.types.is_string_dtype(ser):
+                n_valid = (ser.astype(str).str.strip() != "").sum()
+            else:
+                n_valid = ser.notna().sum()
+            candidates.append((col, is_product, n_valid))
+        # 先按“是否来自资料表”再按“非空数量”排序，取第一个
+        candidates.sort(key=lambda x: (not x[1], -x[2]))
+        category_col = candidates[0][0] if candidates else None
         if category_col is None:
             print(f"警告: 未找到维度字段 '{dimension_field}'，跳过生成 {dimension_name} 布局图")
             return
@@ -624,8 +658,8 @@ class LayoutGenerator:
                 if str(row[shelf_col]).strip() != str(shelf_num).strip():
                     continue
                 
-                layer = int(row[layer_col]) if pd.notna(row[layer_col]) else 0
-                position = str(row[position_col]).strip()
+                layer = int(float(row[layer_col])) if pd.notna(row[layer_col]) else 0
+                position = self._norm_position(row[position_col])
                 
                 if layer not in layers or position not in layers[layer]:
                     continue
