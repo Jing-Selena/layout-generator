@@ -196,9 +196,73 @@ class LayoutGenerator:
         # 落位明细中商品编码常为长数字，按默认会变成科学计数法(float)，与资料表无法匹配；整表按文本读可保留完整编码
         self.layout_df = pd.read_excel(layout_file, dtype=str)
         self.layout_df = self.layout_df.replace('', np.nan)
+        self._prepare_layout_df()
         print(f"落位明细清单列名: {self.layout_df.columns.tolist()}")
         print(f"落位明细清单行数: {len(self.layout_df)}")
-        
+
+    def _prepare_layout_df(self):
+        """落位明细预处理：1) 去掉商品编码为空的行；2) 垫高位置有值时赋到位置列。"""
+        if self.layout_df is None or self.layout_df.empty:
+            return
+        # 查找落位明细中的商品编码列
+        layout_code_col = None
+        for col in self.layout_df.columns:
+            col_str = str(col)
+            if "*商品编码" in col_str or (col_str.startswith("*") and "商品编码" in col_str):
+                layout_code_col = col
+                break
+        if layout_code_col is None:
+            for col in self.layout_df.columns:
+                if "商品编码" in str(col):
+                    layout_code_col = col
+                    break
+        if layout_code_col is not None:
+            # 视为空：NaN、空字符串、仅空格、以及 "nan"/"None"/"null"/"#N/A" 等
+            def _is_empty_code(val):
+                if pd.isna(val):
+                    return True
+                s = str(val).strip()
+                if s == "":
+                    return True
+                if s.lower() in ("nan", "none", "null", "#n/a", "na", "n/a"):
+                    return True
+                return False
+
+            before = len(self.layout_df)
+            self.layout_df = self.layout_df[
+                ~self.layout_df[layout_code_col].apply(_is_empty_code)
+            ].copy()
+            dropped = before - len(self.layout_df)
+            if dropped:
+                print(f"已剔除商品编码为空的行: {dropped} 行")
+
+        # 查找位置列与垫高位置列（与 get_shelf_info 中逻辑一致，优先 *位置）
+        position_col = None
+        pad_col = None
+        for col in self.layout_df.columns:
+            col_str = str(col)
+            if "垫高位置" in col_str:
+                pad_col = col
+            elif ("*位置" in col_str or (col_str.startswith("*") and "位置" in col_str)) and "垫高" not in col_str:
+                position_col = col
+                break
+        if position_col is None:
+            for col in self.layout_df.columns:
+                col_str = str(col)
+                if "位置" in col_str and "垫高" not in col_str and "模板" not in col_str:
+                    position_col = col
+                    break
+        if pad_col is not None and position_col is not None:
+            pad_ser = self.layout_df[pad_col].astype(str).str.strip()
+            has_pad = (
+                self.layout_df[pad_col].notna()
+                & (pad_ser != "")
+                & (pad_ser.str.lower() != "nan")
+            )
+            if has_pad.any():
+                self.layout_df.loc[has_pad, position_col] = self.layout_df.loc[has_pad, pad_col]
+                print(f"已将垫高位置有值的 {int(has_pad.sum())} 行赋到位置列")
+
     def match_data(self):
         """
         根据商品编码匹配数据
