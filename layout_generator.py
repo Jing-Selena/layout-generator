@@ -470,6 +470,14 @@ class LayoutGenerator:
         "规格": "unit",
     }
 
+    # 嵌套维度：当前维度 -> 上级维度列表（从大到小，如 项目细类 -> [项目中类, 项目小类]）
+    DIMENSION_HIERARCHY = {
+        "项目细类": ["项目中类", "项目小类"],
+        "项目小类": ["项目中类"],
+        "项目中类": [],
+    }
+    NESTED_DIMENSION_SEP = "_"  # 多级 value 拼接分隔符
+
     @staticmethod
     def _shelf_items_sorted(shelf_info: Dict):
         """按货架序号数值排序（1,2,...,9,10,11），避免字符串排序导致 10 排在 2 前。"""
@@ -604,6 +612,42 @@ class LayoutGenerator:
                     })
         if rows:
             self._write_merged_excel(excel_path, template_name, rows)
+
+    def _get_dimension_column(self, dimension_field: str):
+        """在 merged_df 中查找维度字段对应的列（优先带 _product 的列）。"""
+        candidates = []
+        for col in self.merged_df.columns:
+            c = str(col).strip()
+            if dimension_field not in c:
+                continue
+            is_product = c == (dimension_field + "_product") or c.endswith("_product")
+            ser = self.merged_df[col]
+            if pd.api.types.is_string_dtype(ser):
+                n_valid = (ser.astype(str).str.strip() != "").sum()
+            else:
+                n_valid = ser.notna().sum()
+            candidates.append((col, is_product, n_valid))
+        candidates.sort(key=lambda x: (not x[1], -x[2]))
+        return candidates[0][0] if candidates else None
+
+    def _get_nested_dimension_value(self, row, dimension_field: str, category_col) -> str:
+        """按嵌套维度拼接 value：当前维度 + 所有上级维度（中类/小类/细类）。"""
+        parent_fields = self.DIMENSION_HIERARCHY.get(dimension_field, [])
+        parts = []
+        for field in parent_fields:
+            col = self._get_dimension_column(field)
+            if col is None:
+                continue
+            val = row.get(col)
+            if pd.notna(val) and str(val).strip() and str(val).strip().lower() not in ("nan", "none", ""):
+                parts.append(str(val).strip())
+        if category_col and pd.notna(row.get(category_col)):
+            cur = str(row[category_col]).strip()
+            if cur and cur.lower() not in ("nan", "none", ""):
+                parts.append(cur)
+        if not parts:
+            return ""
+        return self.NESTED_DIMENSION_SEP.join(parts)
     
     def generate_product_layout(self, shelf_info: Dict, shelf_col: str, 
                                 layer_col: str, position_col: str,
@@ -728,9 +772,8 @@ class LayoutGenerator:
                 if layer not in layers or position not in layers[layer]:
                     continue
                 
-                category = ""
-                if category_col and pd.notna(row[category_col]):
-                    category = str(row[category_col]).strip()
+                category = self._get_nested_dimension_value(row, dimension_field, category_col)
+                if category:
                     all_categories.add(category)
                 
                 shelf_products.append({
@@ -930,13 +973,19 @@ class LayoutGenerator:
             for shelf, layers in shelf_info.items():
                 print(f"  货架 {shelf}: {len(layers)} 层")
             
+            # 模板名若含 /、\、全角斜杠等会破坏路径导致 No such file or directory，此处统一安全化
+            _raw = (template_name or "").strip()
+            for _s in ("/", "\\", "／", "∕", "⧸"):
+                _raw = _raw.replace(_s, "-")
+            _template_safe = _raw.strip("- ") or ""
+
             # 5. 生成货架框架图（与维度图同布局，并生成对应 Excel）
-            if template_name:
-                framework_filename = f"{template_name}-货架框架图.png"
+            if _template_safe:
+                framework_filename = f"{_template_safe}-货架框架图.png"
             else:
                 framework_filename = "货架框架图.png"
             self.generate_shelf_framework(shelf_info, framework_filename, template_name or "")
-            
+
             # 6. 生成五个维度的商品布局图（下载文件名：模板名_布局图_<type_code>，无中文维度名）
             dimensions = [
                 ("项目中类", "项目中类"),
@@ -945,8 +994,8 @@ class LayoutGenerator:
                 ("项目商品类别", "销售类别"),
                 ("品牌名称", "品牌")
             ]
-            if template_name:
-                output_filename = f"{template_name}_布局图.png"
+            if _template_safe:
+                output_filename = f"{_template_safe}_布局图.png"
             else:
                 output_filename = "布局图.png"
             for field_name, display_name in dimensions:
