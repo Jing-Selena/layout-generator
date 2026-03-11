@@ -101,10 +101,15 @@ if generate_button and product_file is not None and layout_file is not None:
                 results = []
                 download_png_name = f"{template_name}_布局图.png" if template_name else "布局图.png"
                 download_xlsx_name = f"{template_name}_布局图.xlsx" if template_name else "布局图.xlsx"
+                # 货架模板名称可能含 /、\、全角斜杠等，用于文件名会变成子路径导致 No such file or directory，此处做安全化
+                _raw = (template_name or "").strip()
+                for _sep in ("/", "\\", "／", "∕", "⧸"):  # 半角/反斜杠、全角斜杠、除号等
+                    _raw = _raw.replace(_sep, "-")
+                template_name_safe = _raw.strip("- ") or ""
                 for field_name, display_name in dimensions:
                     type_code = LayoutGenerator.DIMENSION_TYPE_MAP.get(display_name, display_name)
-                    if template_name:
-                        output_filename = f"{template_name}_布局图_{type_code}.png"
+                    if template_name_safe:
+                        output_filename = f"{template_name_safe}_布局图_{type_code}.png"
                     else:
                         output_filename = f"布局图_{type_code}.png"
                     output_path = os.path.join(temp_dir, output_filename)
@@ -112,6 +117,8 @@ if generate_button and product_file is not None and layout_file is not None:
                         shelf_info, shelf_col, layer_col, position_col,
                         field_name, display_name, template_name, output_path
                     )
+                    if not os.path.exists(output_path):
+                        continue
                     with open(output_path, "rb") as f:
                         png_bytes = f.read()
                     xlsx_path = output_path.rsplit(".", 1)[0] + ".xlsx"
